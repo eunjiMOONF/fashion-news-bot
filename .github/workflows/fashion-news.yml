@@ -1,22 +1,28 @@
-name: Fashion News Daily
+nname: Fashion News Daily
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 오전 9시
-  workflow_dispatch:
+    - cron: '0 0 * * *'   # 매일 오전 9시 (UTC 0시는 한국 KST 09:00)
+  workflow_dispatch:      # 필요할 때 수동 실행도 가능
 
 jobs:
   send-news:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    - run: pip install requests beautifulsoup4
-    - run: python fashion_news_bot.py
-      env:
-        NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
-        NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    - run: pip install requests beautifulsoup4 schedule
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run Fashion News Bot
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python fashion_news_bot.py
+
