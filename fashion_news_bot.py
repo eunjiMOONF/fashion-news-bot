@@ -91,33 +91,50 @@ class FashionNewsBot:
         })
         return {"blocks": blocks}
 
-    def send_to_slack(self, news_list):
+        def send_to_slack(self, news_list):
+        """슬랙으로 메시지 전송"""
         if not self.slack_webhook_url:
             print("❌ Slack Webhook URL 없음")
             return False
-        if not news_list:
-            print("📰 뉴스 없음")
-            return False
 
-        msg = self.format_slack_message(news_list)
+        headers = {"Content-Type": "application/json"}
+
+        # 뉴스가 없으면 하트비트 메시지 전송
+        if not news_list:
+            payload = {
+                "text": f"🫡 오늘은 수집된 패션 뉴스가 없습니다. ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+            }
+        else:
+            payload = self.format_slack_message(news_list)
+
         try:
-            resp = requests.post(
+            response = requests.post(
                 self.slack_webhook_url,
-                data=json.dumps(msg),
-                headers={"Content-Type": "application/json"},
+                data=json.dumps(payload, ensure_ascii=False),
+                headers=headers,
                 timeout=10
             )
-            resp.raise_for_status()
-            print(f"✅ Slack 전송 완료: {len(news_list)}건")
-            return True
+            print("Slack response:", response.status_code, response.text[:200])
+            response.raise_for_status()
+
+            if response.text.strip().lower() == "ok" or response.status_code == 200:
+                print(f"✅ Slack 전송 완료: {len(news_list)}건")
+                return True
+            else:
+                print("⚠️ Slack 응답 이상:", response.text)
+                return False
+
         except Exception as e:
             print(f"❌ Slack 전송 오류: {e}")
             return False
 
+
 def main():
+    """메인 실행 함수"""
     bot = FashionNewsBot()
-    news = bot.collect_daily_news()
-    bot.send_to_slack(news)
+    news_list = bot.collect_daily_news()
+    bot.send_to_slack(news_list)
+
 
 if __name__ == "__main__":
     main()
