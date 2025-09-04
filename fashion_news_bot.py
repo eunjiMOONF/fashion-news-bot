@@ -76,3 +76,48 @@ class FashionNewsBot:
             if n.get("link"):
                 section["accessory"] = {
                     "type": "button",
+                    "text": {"type": "plain_text", "text": "기사 보기", "emoji": True},
+                    "url": n["link"]
+                }
+            blocks.append(section)
+            if i < len(news_list):
+                blocks.append({"type": "divider"})
+
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": f"🤖 패션뉴스봇 | 업데이트 {datetime.now().strftime('%H:%M')}"}
+            ]
+        })
+        return {"blocks": blocks}
+
+    def send_to_slack(self, news_list):
+        if not self.slack_webhook_url:
+            print("❌ Slack Webhook URL 없음")
+            return False
+        if not news_list:
+            print("📰 뉴스 없음")
+            return False
+
+        msg = self.format_slack_message(news_list)
+        try:
+            resp = requests.post(
+                self.slack_webhook_url,
+                data=json.dumps(msg),
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            resp.raise_for_status()
+            print(f"✅ Slack 전송 완료: {len(news_list)}건")
+            return True
+        except Exception as e:
+            print(f"❌ Slack 전송 오류: {e}")
+            return False
+
+def main():
+    bot = FashionNewsBot()
+    news = bot.collect_daily_news()
+    bot.send_to_slack(news)
+
+if __name__ == "__main__":
+    main()
