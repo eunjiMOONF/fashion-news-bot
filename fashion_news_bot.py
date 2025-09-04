@@ -1,6 +1,7 @@
 import os, json, time, requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from bs4 import BeautifulSoup
+
 
 class FashionNewsBot:
     def __init__(self):
@@ -21,6 +22,7 @@ class FashionNewsBot:
         ]
 
     def search_naver_news(self, keyword, display=3):
+        """네이버 뉴스 API로 패션 뉴스 검색"""
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {
             "X-Naver-Client-Id": self.naver_client_id,
@@ -37,6 +39,7 @@ class FashionNewsBot:
             return None
 
     def collect_daily_news(self):
+        """패션 뉴스 수집"""
         all_news = []
         for kw in self.fashion_keywords[:5]:
             data = self.search_naver_news(kw)
@@ -47,6 +50,7 @@ class FashionNewsBot:
                 desc = BeautifulSoup(item["description"], "html.parser").get_text()
                 link = item.get("originallink") or item.get("link")
 
+                # 신뢰할 수 있는 소스만 포함
                 if any(src in title for src in self.trusted_sources):
                     all_news.append({
                         "title": title,
@@ -61,6 +65,7 @@ class FashionNewsBot:
         return all_news[:15]
 
     def format_slack_message(self, news_list):
+        """슬랙에 보낼 메시지 포맷"""
         today = datetime.now().strftime("%Y년 %m월 %d일")
         blocks = [
             {
@@ -91,7 +96,7 @@ class FashionNewsBot:
         })
         return {"blocks": blocks}
 
-            def send_to_slack(self, news_list):
+    def send_to_slack(self, news_list):
         """슬랙으로 메시지 전송"""
         if not self.slack_webhook_url:
             print("❌ Slack Webhook URL 없음")
@@ -99,7 +104,6 @@ class FashionNewsBot:
 
         headers = {"Content-Type": "application/json"}
 
-        # 뉴스가 없으면 하트비트 메시지 전송
         if not news_list:
             payload = {
                 "text": f"🫡 오늘은 수집된 패션 뉴스가 없습니다. ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
@@ -138,4 +142,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
