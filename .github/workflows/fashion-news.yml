@@ -19,3 +19,4 @@ jobs:
         NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
         NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    - run: pip install requests beautifulsoup4 schedule
