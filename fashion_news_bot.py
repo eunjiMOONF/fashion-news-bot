@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import requests
 import json
 from datetime import datetime, timedelta
@@ -6,6 +5,16 @@ import os
 import time
 from bs4 import BeautifulSoup
 import logging
+
+# .env 파일 로드 시도
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("📁 .env 파일을 로드했습니다.")
+except ImportError:
+    print("💡 python-dotenv가 설치되지 않았습니다. 'pip install python-dotenv' 실행 후 .env 파일을 사용할 수 있습니다.")
+except Exception as e:
+    print(f"⚠️  .env 파일 로드 중 오류: {e}")
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -83,7 +92,7 @@ class FashionNewsBot:
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 429:
-                logger.warning("API 호출 제한 도달, 잠시 대기합니다...")
+                logger.warning(f"API 호출 제한 도달, 잠시 대기합니다...")
                 time.sleep(1)
                 return None
             else:
@@ -145,7 +154,7 @@ class FashionNewsBot:
         all_news = []
         
         # API 키 확인
-        if not self.naver_client_id or not self.naver_client_secret or self.naver_client_id == "실제" or self.naver_client_secret == "실제":
+        if not self.naver_client_id or not self.naver_client_secret:
             print("❌ 네이버 API 키가 설정되지 않았습니다. 테스트 뉴스를 사용합니다.")
             return [{
                 'title': '[테스트] 패션 뉴스봇 정상 작동 확인',
@@ -183,7 +192,7 @@ class FashionNewsBot:
                                 import email.utils
                                 pub_datetime = email.utils.parsedate_to_datetime(pub_date)
                                 formatted_date = pub_datetime.strftime('%Y-%m-%d')
-                            except Exception:
+                            except:
                                 formatted_date = datetime.now().strftime('%Y-%m-%d')
                         else:
                             formatted_date = datetime.now().strftime('%Y-%m-%d')
@@ -216,7 +225,7 @@ class FashionNewsBot:
         unique_news = []
         
         for news in all_news:
-            # 제목 기준 중복 제거 (유사도 검사 개선 여지)
+            # 제목 기준 중복 제거 (유사도 검사 개선)
             title_key = news['title'].lower().replace(' ', '')
             if title_key not in seen_titles:
                 seen_titles.add(title_key)
@@ -225,7 +234,7 @@ class FashionNewsBot:
         # 4. 뉴스 정렬 (최신순)
         try:
             unique_news.sort(key=lambda x: x['pubDate'], reverse=True)
-        except Exception:
+        except:
             pass  # 정렬 실패 시 기존 순서 유지
         
         # 5. 상위 12개만 선택
@@ -245,7 +254,7 @@ class FashionNewsBot:
         return final_news
 
     def format_slack_message(self, news_list):
-        """슬랙 메시지 포맷 생성 (Block Kit)"""
+        """슬랙 메시지 포맷 생성 (개선된 디자인)"""
         today = datetime.now().strftime('%Y년 %m월 %d일')
         weekday = ['월', '화', '수', '목', '금', '토', '일'][datetime.now().weekday()]
         
@@ -276,81 +285,112 @@ class FashionNewsBot:
                         "text": f"오늘의 한국 패션 업계 주요 소식 *{len(news_list)}건*을 전해드립니다! 🚀"
                     }
                 },
-                { "type": "divider" }
+                {
+                    "type": "divider"
+                }
             ]
         }
         
-        # 뉴스별 블록
+        # 뉴스별로 블록 추가
         for i, news in enumerate(news_list, 1):
+            # 키워드에 따른 이모지 선택
             keyword_emoji = emoji_map.get(news.get('keyword', ''), emoji_map['default'])
-            title = news.get('title', '').strip() or "제목 없음"
-            description = (news.get('description') or '').strip()
+            
+            # 설명 길이 조정
+            description = news.get('description', '')
             if len(description) > 120:
                 description = description[:120] + '...'
-            source = news.get('source', '알 수 없음')
-            keyword = news.get('keyword', '패션뉴스')
-
+            
             news_block = {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"{keyword_emoji} *{title}*\n_{description}_\n📰 {source} • #{keyword}"
+                    "text": f"{keyword_emoji} *{news['title']}*\n"
+                           f"_{description}_\n"
+                           f"📰 {news.get('source', '알 수 없음')} • "
+                           f"#{news.get('keyword', '패션뉴스')}"
                 }
             }
             
-            link = news.get('link')
-            if link and link != 'https://github.com':
+            # 링크가 있으면 버튼 추가
+            if news.get('link') and news['link'] != 'https://github.com':
                 news_block["accessory"] = {
                     "type": "button",
-                    "text": { "type": "plain_text", "text": "자세히 보기", "emoji": True },
-                    "url": link,
+                    "text": {
+                        "type": "plain_text",
+                        "text": "자세히 보기",
+                        "emoji": True
+                    },
+                    "url": news['link'],
                     "action_id": f"news_button_{i}"
                 }
             
             message["blocks"].append(news_block)
+            
+            # 마지막이 아니면 구분선 추가
             if i < len(news_list):
-                message["blocks"].append({ "type": "divider" })
+                message["blocks"].append({"type": "divider"})
         
-        # 푸터
-        message["blocks"].append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"🤖 패션뉴스봇 v2.0 | 업데이트: {datetime.now().strftime('%H:%M')} | 문의: IT팀"
-                }
-            ]
-        })
+        # 푸터 개선
+        message["blocks"].extend([
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"🤖 패션뉴스봇 v2.0 | 업데이트: {datetime.now().strftime('%H:%M')} | "
+                               "문의: IT팀"
+                    }
+                ]
+            }
+        ])
         
         return message
 
     def send_to_slack(self, news_list):
-        """슬랙으로 메시지 전송 (UTF-8/한글 안정화)"""
-        if not self.slack_webhook_url or not self.slack_webhook_url.strip().startswith("https://hooks.slack.com/services/"):
-            print("❌ 슬랙 웹훅 URL이 올바르지 않습니다. SLACK_WEBHOOK_URL을 확인하세요.")
+        """슬랙으로 메시지 전송 (개선된 오류 처리)"""
+        if not self.slack_webhook_url or self.slack_webhook_url == "여기에_새로운_슬랙_웹훅_URL_입력":
+            print("❌ 슬랙 웹훅 URL이 설정되지 않았습니다.")
+            print("💡 올바른 웹훅 URL을 코드에 입력해주세요.")
             return False
         
         if not news_list:
             print("📰 전송할 뉴스가 없습니다.")
             return False
         
+        # 웹훅 URL 형식 검증
+        if not self.slack_webhook_url.startswith('https://hooks.slack.com/services/'):
+            print("❌ 잘못된 슬랙 웹훅 URL 형식입니다.")
+            print(f"현재 URL: {self.slack_webhook_url[:50]}...")
+            print("올바른 형식: https://hooks.slack.com/services/TXXXXXXXX/BXXXXXXXX/...")
+            return False
+        
         message = self.format_slack_message(news_list)
         
         try:
-            resp = requests.post(
-                self.slack_webhook_url.strip(),
-                data=json.dumps(message, ensure_ascii=False).encode("utf-8"),  # 🔑 핵심: UTF-8 바이트로 전송
-                headers={ "Content-Type": "application/json; charset=utf-8" },
+            print("📤 슬랙으로 메시지를 전송합니다...")
+            response = requests.post(
+                self.slack_webhook_url,
+                data=json.dumps(message),
+                headers={
+                    'Content-Type': 'application/json; charset=utf-8'
+                },
                 timeout=30
             )
             
-            if resp.status_code == 200 and resp.text.strip() == "ok":
+            if response.status_code == 200:
                 print(f"✅ 슬랙 전송 완료: {len(news_list)}개 뉴스")
                 return True
+            elif response.status_code == 403:
+                print(f"❌ 슬랙 인증 실패 (403): 웹훅 URL이 유효하지 않습니다")
+                print(f"웹훅 URL 확인: {self.slack_webhook_url[:50]}...")
+                print("💡 슬랙에서 새로운 웹훅을 생성해주세요.")
+            elif response.status_code == 404:
+                print(f"❌ 웹훅을 찾을 수 없습니다 (404): URL이 잘못되었습니다")
             else:
-                print(f"❌ 슬랙 전송 실패: HTTP {resp.status_code}")
-                print(f"응답 내용: {resp.text[:300]}...")
-                return False
+                print(f"❌ 슬랙 전송 실패: HTTP {response.status_code}")
+                print(f"응답 내용: {response.text[:200]}...")
+            return False
                 
         except requests.exceptions.Timeout:
             print("❌ 슬랙 전송 타임아웃")
@@ -365,6 +405,7 @@ class FashionNewsBot:
         print(f"🔍 {start_time.strftime('%Y-%m-%d %H:%M')} - 패션 뉴스 수집 시작")
         
         try:
+            # 뉴스 수집
             news_list = self.collect_daily_news()
             
             if news_list:
@@ -377,14 +418,30 @@ class FashionNewsBot:
                 if len(news_list) > 3:
                     print(f"   ... 외 {len(news_list) - 3}개")
                 
-                success = self.send_to_slack(news_list)
+                # 1. 콘솔에 예쁘게 출력
+                self.display_news_in_console(news_list)
                 
-                if success:
-                    end_time = datetime.now()
-                    duration = (end_time - start_time).seconds
-                    print(f"✅ 패션 뉴스 브리핑 완료! (소요시간: {duration}초)")
+                # 2. 파일로 저장
+                saved_file = self.save_news_to_file(news_list)
+                
+                # 3. 슬랙 전송 시도 (실패해도 계속 진행)
+                print("\n📤 슬랙 전송을 시도합니다...")
+                slack_success = self.send_to_slack(news_list)
+                
+                if slack_success:
+                    print("✅ 슬랙 전송도 성공했습니다!")
                 else:
-                    print("❌ 슬랙 전송에 실패했습니다.")
+                    print("⚠️  슬랙 전송은 실패했지만, 콘솔 출력과 파일 저장은 완료되었습니다.")
+                
+                # 결과 요약
+                end_time = datetime.now()
+                duration = (end_time - start_time).seconds
+                print(f"\n🎉 패션 뉴스 브리핑 완료!")
+                print(f"📊 수집: {len(news_list)}개 뉴스")
+                print(f"💾 파일: {saved_file if saved_file else '저장 실패'}")
+                print(f"📱 슬랙: {'성공' if slack_success else '실패'}")
+                print(f"⏱️  소요시간: {duration}초")
+                
             else:
                 print("📰 수집된 뉴스가 없습니다.")
                 
