@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 class FashionNewsBot:
     def __init__(self):
-         # 환경변수에서 API 키들 가져오기 (없으면 직접 설정된 값 사용)
-         self.naver_client_id = os.getenv('NAVER_CLIENT_ID') or "pPilWOLS9m2zOgfbQ24A"
-         self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET') or "mPg8xJxCPy"
-         self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL') or "https://hooks.slack.com/services/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"
+        # 환경변수에서 API 키들 가져오기 (없으면 직접 설정된 값 사용)
+        self.naver_client_id = os.getenv('NAVER_CLIENT_ID') or "pPilWOLS9m2zOgfbQ24A"
+        self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET') or "mPg8xJxCPy"
+        self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL') or "https://hooks.slack.com/services/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"
         
         # 디버깅용 출력
         print(f"🔑 NAVER_CLIENT_ID: {'✅ 설정됨' if self.naver_client_id else '❌ 없음'}")
