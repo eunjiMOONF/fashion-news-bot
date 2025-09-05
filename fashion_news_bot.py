@@ -117,4 +117,300 @@ class FashionNewsBot:
                     if title_elem:
                         title = title_elem.get_text(strip=True)
                         link = title_elem.get('href', '')
-                        if link a
+                        if link and not link.startswith('http'):
+                            link = 'https://fashionbiz.co.kr' + link
+                        
+                        if self.is_valid_news(title):
+                            news_list.append({
+                                'title': title,
+                                'link': link,
+                                'source': '패션비즈',
+                                'pubDate': datetime.now().strftime('%Y-%m-%d'),
+                                'description': '패션비즈 최신 뉴스',
+                                'keyword': '패션비즈'
+                            })
+        except Exception as e:
+            logger.warning(f"패션비즈 스크래핑 오류: {e}")
+        
+        # 2. 기타 패션 사이트들도 추가 가능
+        # try:
+        #     # 패션인사이트, WWD코리아 등 추가 스크래핑
+        # except Exception as e:
+        #     logger.warning(f"추가 사이트 스크래핑 오류: {e}")
+        
+        return news_list
+
+    def collect_daily_news(self):
+        """일일 패션 뉴스 수집 (개선된 로직)"""
+        all_news = []
+        
+        # API 키 확인
+        if not self.naver_client_id or not self.naver_client_secret or self.naver_client_id == "실제" or self.naver_client_secret == "실제":
+            print("❌ 네이버 API 키가 설정되지 않았습니다. 테스트 뉴스를 사용합니다.")
+            return [{
+                'title': '[테스트] 패션 뉴스봇 정상 작동 확인',
+                'description': '네이버 API 키를 설정하면 실제 패션 뉴스를 수집합니다.',
+                'link': 'https://github.com',
+                'source': '패션뉴스봇',
+                'pubDate': datetime.now().strftime('%Y-%m-%d'),
+                'keyword': '테스트'
+            }]
+        
+        print("🔍 네이버 API로 뉴스 검색 중...")
+        
+        # 1. 네이버 API로 키워드별 검색 (주요 키워드 위주)
+        success_count = 0
+        for keyword in self.fashion_keywords[:8]:  # API 제한 고려하여 8개만
+            news_data = self.search_naver_news(keyword, display=4)
+            
+            if news_data and 'items' in news_data:
+                success_count += 1
+                for item in news_data['items']:
+                    try:
+                        # HTML 태그 제거 및 정제
+                        title = BeautifulSoup(item['title'], 'html.parser').get_text().strip()
+                        description = BeautifulSoup(item['description'], 'html.parser').get_text().strip()
+                        
+                        # 유효성 검사
+                        if not self.is_valid_news(title, description):
+                            continue
+                        
+                        # 발행일 파싱
+                        pub_date = item.get('pubDate', '')
+                        if pub_date:
+                            try:
+                                # RFC 2822 형식을 datetime으로 변환
+                                import email.utils
+                                pub_datetime = email.utils.parsedate_to_datetime(pub_date)
+                                formatted_date = pub_datetime.strftime('%Y-%m-%d')
+                            except Exception:
+                                formatted_date = datetime.now().strftime('%Y-%m-%d')
+                        else:
+                            formatted_date = datetime.now().strftime('%Y-%m-%d')
+                        
+                        all_news.append({
+                            'title': title,
+                            'description': description[:200],  # 설명 길이 제한
+                            'link': item.get('originallink', item.get('link', '')),
+                            'source': '네이버뉴스',
+                            'pubDate': formatted_date,
+                            'keyword': keyword
+                        })
+                        
+                    except Exception as e:
+                        logger.warning(f"뉴스 아이템 처리 오류: {e}")
+                        continue
+            
+            # API 호출 간격 조절
+            time.sleep(0.2)
+        
+        print(f"✅ {success_count}개 키워드로 뉴스 검색 완료")
+        
+        # 2. 패션 전문 사이트 스크래핑
+        print("🔍 패션 전문 사이트 스크래핑 중...")
+        scraped_news = self.scrape_fashion_sites()
+        all_news.extend(scraped_news)
+        
+        # 3. 중복 제거 및 품질 필터링
+        seen_titles = set()
+        unique_news = []
+        
+        for news in all_news:
+            # 제목 기준 중복 제거 (유사도 검사 개선 여지)
+            title_key = news['title'].lower().replace(' ', '')
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
+                unique_news.append(news)
+        
+        # 4. 뉴스 정렬 (최신순)
+        try:
+            unique_news.sort(key=lambda x: x['pubDate'], reverse=True)
+        except Exception:
+            pass  # 정렬 실패 시 기존 순서 유지
+        
+        # 5. 상위 12개만 선택
+        final_news = unique_news[:12]
+        
+        # 6. 뉴스가 없으면 알림 메시지
+        if not final_news:
+            final_news = [{
+                'title': '📢 오늘은 새로운 패션 뉴스가 없습니다',
+                'description': '내일 다시 확인해주세요! 패션 업계의 새로운 소식을 기다려봅니다.',
+                'link': 'https://fashionbiz.co.kr',
+                'source': '패션뉴스봇',
+                'pubDate': datetime.now().strftime('%Y-%m-%d'),
+                'keyword': '알림'
+            }]
+        
+        return final_news
+
+    def format_slack_message(self, news_list):
+        """슬랙 메시지 포맷 생성 (Block Kit)"""
+        today = datetime.now().strftime('%Y년 %m월 %d일')
+        weekday = ['월', '화', '수', '목', '금', '토', '일'][datetime.now().weekday()]
+        
+        # 뉴스 유형별 이모지
+        emoji_map = {
+            'K-패션': '🇰🇷',
+            '패션트렌드': '✨',
+            '패션브랜드': '👗',
+            '패션산업': '🏭',
+            '패션테크': '💻',
+            'default': '📰'
+        }
+        
+        message = {
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"🎨 {today}({weekday}) 패션 뉴스 브리핑",
+                        "emoji": True
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"오늘의 한국 패션 업계 주요 소식 *{len(news_list)}건*을 전해드립니다! 🚀"
+                    }
+                },
+                { "type": "divider" }
+            ]
+        }
+        
+        # 뉴스별 블록
+        for i, news in enumerate(news_list, 1):
+            keyword_emoji = emoji_map.get(news.get('keyword', ''), emoji_map['default'])
+            title = news.get('title', '').strip() or "제목 없음"
+            description = (news.get('description') or '').strip()
+            if len(description) > 120:
+                description = description[:120] + '...'
+            source = news.get('source', '알 수 없음')
+            keyword = news.get('keyword', '패션뉴스')
+
+            news_block = {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{keyword_emoji} *{title}*\n_{description}_\n📰 {source} • #{keyword}"
+                }
+            }
+            
+            link = news.get('link')
+            if link and link != 'https://github.com':
+                news_block["accessory"] = {
+                    "type": "button",
+                    "text": { "type": "plain_text", "text": "자세히 보기", "emoji": True },
+                    "url": link,
+                    "action_id": f"news_button_{i}"
+                }
+            
+            message["blocks"].append(news_block)
+            if i < len(news_list):
+                message["blocks"].append({ "type": "divider" })
+        
+        # 푸터
+        message["blocks"].append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"🤖 패션뉴스봇 v2.0 | 업데이트: {datetime.now().strftime('%H:%M')} | 문의: IT팀"
+                }
+            ]
+        })
+        
+        return message
+
+    def send_to_slack(self, news_list):
+        """슬랙으로 메시지 전송 (UTF-8/한글 안정화)"""
+        if not self.slack_webhook_url or not self.slack_webhook_url.strip().startswith("https://hooks.slack.com/services/"):
+            print("❌ 슬랙 웹훅 URL이 올바르지 않습니다. SLACK_WEBHOOK_URL을 확인하세요.")
+            return False
+        
+        if not news_list:
+            print("📰 전송할 뉴스가 없습니다.")
+            return False
+        
+        message = self.format_slack_message(news_list)
+        
+        try:
+            resp = requests.post(
+                self.slack_webhook_url.strip(),
+                data=json.dumps(message, ensure_ascii=False).encode("utf-8"),  # 🔑 핵심: UTF-8 바이트로 전송
+                headers={ "Content-Type": "application/json; charset=utf-8" },
+                timeout=30
+            )
+            
+            if resp.status_code == 200 and resp.text.strip() == "ok":
+                print(f"✅ 슬랙 전송 완료: {len(news_list)}개 뉴스")
+                return True
+            else:
+                print(f"❌ 슬랙 전송 실패: HTTP {resp.status_code}")
+                print(f"응답 내용: {resp.text[:300]}...")
+                return False
+                
+        except requests.exceptions.Timeout:
+            print("❌ 슬랙 전송 타임아웃")
+            return False
+        except Exception as e:
+            print(f"❌ 슬랙 전송 오류: {e}")
+            return False
+
+    def run_daily_job(self):
+        """일일 뉴스 수집 및 전송 작업 (개선된 로깅)"""
+        start_time = datetime.now()
+        print(f"🔍 {start_time.strftime('%Y-%m-%d %H:%M')} - 패션 뉴스 수집 시작")
+        
+        try:
+            news_list = self.collect_daily_news()
+            
+            if news_list:
+                print(f"📰 {len(news_list)}개의 뉴스를 수집했습니다.")
+                
+                # 수집된 뉴스 미리보기 출력
+                for i, news in enumerate(news_list[:3], 1):
+                    print(f"   {i}. {news['title'][:50]}...")
+                
+                if len(news_list) > 3:
+                    print(f"   ... 외 {len(news_list) - 3}개")
+                
+                success = self.send_to_slack(news_list)
+                
+                if success:
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).seconds
+                    print(f"✅ 패션 뉴스 브리핑 완료! (소요시간: {duration}초)")
+                else:
+                    print("❌ 슬랙 전송에 실패했습니다.")
+            else:
+                print("📰 수집된 뉴스가 없습니다.")
+                
+        except Exception as e:
+            logger.error(f"작업 실행 중 오류 발생: {e}")
+            print(f"❌ 작업 실행 중 오류가 발생했습니다: {e}")
+
+def main():
+    """메인 실행 함수"""
+    print("=" * 50)
+    print("🎨 패션 뉴스봇 v2.0 시작")
+    print("=" * 50)
+    
+    bot = FashionNewsBot()
+    
+    try:
+        bot.run_daily_job()
+    except KeyboardInterrupt:
+        print("\n⏹️  사용자에 의해 중단되었습니다.")
+    except Exception as e:
+        logger.error(f"예상치 못한 오류: {e}")
+        print(f"❌ 예상치 못한 오류가 발생했습니다: {e}")
+    finally:
+        print("=" * 50)
+        print("✅ 패션 뉴스봇 종료")
+        print("=" * 50)
+
+if __name__ == "__main__":
+    main()
