@@ -16,7 +16,7 @@ class FashionNewsBot:
         # 환경변수에서 API 키들 가져오기 (없으면 직접 설정된 값 사용)
         self.naver_client_id = os.getenv('NAVER_CLIENT_ID') or "pPilWOLS9m2zOgfbQ24A"
         self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET') or "mPg8xJxCPy"
-        self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL') or "https://hooks.slack.com/services/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"
+        self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL') or "https://hooks.slack.com/services/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"
         
         # 디버깅용 출력
         print(f"🔑 NAVER_CLIENT_ID: {'✅ 설정됨' if self.naver_client_id else '❌ 없음'}")
