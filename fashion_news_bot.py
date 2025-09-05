@@ -4,14 +4,18 @@ from datetime import datetime, timedelta
 import os
 import time
 from bs4 import BeautifulSoup
-import schedule
 
 class FashionNewsBot:
     def __init__(self):
         # 환경변수에서 API 키들 가져오기
-        self.naver_client_id = os.getenv('NAVER_CLIENT_ID')
-        self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET')
-        self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL')
+        self.naver_client_id = os.getenv('NAVER_CLIENT_ID') or os.environ.get('NAVER_CLIENT_ID')
+        self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET') or os.environ.get('NAVER_CLIENT_SECRET')
+        self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL') or os.environ.get('SLACK_WEBHOOK_URL')
+        
+        # 디버깅용 출력
+        print(f"🔑 NAVER_CLIENT_ID: {'✅ 설정됨' if self.naver_client_id else '❌ 없음'}")
+        print(f"🔑 NAVER_CLIENT_SECRET: {'✅ 설정됨' if self.naver_client_secret else '❌ 없음'}")
+        print(f"🔑 SLACK_WEBHOOK_URL: {'✅ 설정됨' if self.slack_webhook_url else '❌ 없음'}")
         
         # 패션 관련 키워드들
         self.fashion_keywords = [
@@ -37,10 +41,6 @@ class FashionNewsBot:
             'X-Naver-Client-Secret': self.naver_client_secret
         }
         
-        # 어제 날짜부터 오늘까지의 뉴스만 검색
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        today = datetime.now().strftime('%Y-%m-%d')
-        
         params = {
             'query': keyword,
             'display': display,
@@ -53,10 +53,10 @@ class FashionNewsBot:
             if response.status_code == 200:
                 return response.json()
             else:
-                print(f"API 오류: {response.status_code}")
+                print(f"[WARN] 네이버 뉴스 검색 오류({keyword}): {response.status_code} {response.reason} for url: {response.url}")
                 return None
         except Exception as e:
-            print(f"뉴스 검색 오류: {e}")
+            print(f"[WARN] 뉴스 검색 오류({keyword}): {e}")
             return None
 
     def scrape_fashion_sites(self):
@@ -82,10 +82,11 @@ class FashionNewsBot:
                             'title': title,
                             'link': link,
                             'source': '패션비즈',
-                            'pubDate': datetime.now().strftime('%Y-%m-%d')
+                            'pubDate': datetime.now().strftime('%Y-%m-%d'),
+                            'description': '패션비즈 뉴스'
                         })
         except Exception as e:
-            print(f"패션비즈 스크래핑 오류: {e}")
+            print(f"[WARN] 패션비즈 스크래핑 오류: {e}")
         
         return news_list
 
@@ -250,6 +251,7 @@ class FashionNewsBot:
                 return True
             else:
                 print(f"❌ 슬랙 전송 실패: {response.status_code}")
+                print(f"응답: {response.text}")
                 return False
                 
         except Exception as e:
@@ -279,20 +281,9 @@ class FashionNewsBot:
 def main():
     """메인 실행 함수"""
     bot = FashionNewsBot()
-    
-    # 즉시 실행 (테스트용)
-    if input("지금 바로 뉴스를 수집하고 전송하시겠습니까? (y/n): ").lower() == 'y':
-        bot.run_daily_job()
-    
-    # 매일 오전 9시에 실행하도록 스케줄링
-    schedule.every().day.at("09:00").do(bot.run_daily_job)
-    print("⏰ 매일 오전 9시에 패션 뉴스를 수집하도록 스케줄링되었습니다.")
-    print("프로그램을 종료하려면 Ctrl+C를 누르세요.")
-    
-    # 스케줄러 실행
-    while True:
-        schedule.run_pending()
-        time.sleep(60)  # 1분마다 스케줄 체크
+    print("🔍 패션 뉴스 수집을 시작합니다...")
+    bot.run_daily_job()
+    print("✅ 작업이 완료되었습니다!")
 
 if __name__ == "__main__":
     main()
